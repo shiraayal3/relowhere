@@ -1,10 +1,11 @@
-import requests
-from bs4 import BeautifulSoup
 from datetime import datetime
 from pathlib import Path
-from logger import logger
-from scraper.config import RAW_DATA_FOLDER, FILE_EXTENSIONS_TO_DOWNLOAD
 
+import requests
+from bs4 import BeautifulSoup
+
+from logger import logger
+from scraper.config import FILE_EXTENSIONS_TO_DOWNLOAD, RAW_DATA_FOLDER
 
 CHUNK_SIZE = 8192  # 8KB
 
@@ -54,7 +55,10 @@ def scrape_datasets(base_url: str, base_name: str):
     for link in links:
         href = link.get("href")
         if href and any(
-            [href.endswith(file_extension) for file_extension in FILE_EXTENSIONS_TO_DOWNLOAD]
+            [
+                href.endswith(file_extension)
+                for file_extension in FILE_EXTENSIONS_TO_DOWNLOAD
+            ]
         ):
             file_name = href.split("/")[-1]
             save_raw_data(str(link).encode(), "html_a", file_name)
