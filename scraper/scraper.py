@@ -1,53 +1,61 @@
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
-import time
-import os
-import logging
+from datetime import datetime
+from pathlib import Path
+from logger import logger
+from scraper.config import RAW_DATA_FOLDER, FILE_EXTENSIONS_TO_DOWNLOAD
 
-BASE_URL = "https://www.census.gov/data/tables/time-series/demo/popest/2020s-total-cities-and-towns.html"
-DOWNLOAD_FOLDER = "datasets/"
-DOWNLOAD_LOG_FILE_NAME = "download_log.log"
-FILE_TYPES_TO_DOWNLOAD = [".csv", ".xlsx"]
 
-CHUNK_SIZE = 8192 # 8KB
+CHUNK_SIZE = 8192  # 8KB
 
-# init
-if not os.path.exists(DOWNLOAD_FOLDER):
-    os.makedirs(DOWNLOAD_FOLDER)
 
-download_log_file = os.path.join(DOWNLOAD_FOLDER, DOWNLOAD_LOG_FILE_NAME)
-logging.basicConfig(filename=download_log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-def _save_file_in_chunks(file_path: str, response: requests.models.Response):
+def save_raw_data(data: str, data_type: str, data_name: str):
+    file_name = f"{str(datetime.date(datetime.now()))}_{data_type}_{data_name}"
+    file_path = Path(RAW_DATA_FOLDER) / file_name
     with open(file_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+        f.write(data)
+
+
+def save_raw_data_in_chunks(
+    response_data: requests.models.Response,
+    data_type: str,
+    data_name: str,
+    chunk_size: int = CHUNK_SIZE,
+):
+    file_name = f"{str(datetime.date(datetime.now()))}_{data_type}_{data_name}"
+    file_path = Path(RAW_DATA_FOLDER) / file_name
+    with open(file_path, "wb") as f:
+        for chunk in response_data.iter_content(chunk_size=chunk_size):
             f.write(chunk)
 
-def _download_dataset(url: str, file_path: str):
-    response = requests.get(url, stream=True)
-    response.raise_for_status()
-    _save_file_in_chunks(file_path, response)
 
-def download_dataset(url: str, download_folder: str = DOWNLOAD_FOLDER):
-    file_name = url.split("/")[-1]
-    file_path = os.path.join(download_folder, file_name)
-
+def download_file(url: str, file_name: str):
     try:
-        _download_dataset(url, file_path)
-        logging.info(f"Downloaded: {file_name}")
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        save_raw_data_in_chunks(response, "file", file_name)
+        logger.info(f"Downloaded: {file_name}")
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error downloading {file_name}:\n{e}")
+        logger.error(f"Error downloading {file_name}:\n{e}")
 
-def scrape_datasets(base_url: str):
-    response = requests.get(BASE_URL)
+
+def scrape_datasets(base_url: str, base_name: str):
+    response = requests.get(base_url)
     if response.status_code != 200:
-        logging.error(f"Unable to scrape {base_rul} with status code {response.status_code}:\n{response.reason}")
+        logger.error(
+            f"Unable to scrape {base_url} with status code {response.status_code}:\n{response.reason}"
+        )
         return
+
+    save_raw_data(response.content, "html", base_name)
 
     soup = BeautifulSoup(response.content, "html.parser")
     links = soup.find_all("a")
     for link in links:
         href = link.get("href")
-        if href and any([href.endswith(file_type) for file_type in FILE_TYPES_TO_DOWNLOAD]):
-            download_dataset("http:" + href)
+        if href and any(
+            [href.endswith(file_extension) for file_extension in FILE_EXTENSIONS_TO_DOWNLOAD]
+        ):
+            file_name = href.split("/")[-1]
+            save_raw_data(str(link).encode(), "html_a", file_name)
+            download_file("http:" + href, file_name)
